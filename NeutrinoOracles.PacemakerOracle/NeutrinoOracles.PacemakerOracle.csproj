@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <RootNamespace>NeutrinoOracles.PacemakerOracle</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Extensions.Configuration" Version="3.1.0-preview2.19525.4" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.1.0-preview2.19525.4" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="3.1.0-preview2.19525.4" />
+      <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.1.0-preview2.19525.4" />
+      <PackageReference Include="Newtonsoft.Json" Version="12.0.3-beta2" />
+      <PackageReference Include="NLog" Version="4.6.7" />
+      <PackageReference Include="WavesPlatform.WavesCS" Version="1.2.3" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\NeutrinoOracles.Common\NeutrinoOracles.Common.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="appsettings.development.json">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+      <None Update="NLog.config">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+</Project>
