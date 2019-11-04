@@ -69,6 +69,10 @@ namespace NeutrinoOracles.PacemakerOracle
                             continue;
 
                         var indexes = controlContractData.PriceHeightByIndex.Where(x=> x.Value <= withdrawBlock).ToArray();
+                        
+                        if(!indexes.Any())
+                            break;
+                        
                         var maxValue = indexes.Max(y => y.Value);
                         var index = Convert.ToInt64(indexes.FirstOrDefault(x=> x.Value == maxValue).Key);
                         
@@ -87,13 +91,12 @@ namespace NeutrinoOracles.PacemakerOracle
                     
                     var bondAuctionBalance = await wavesHelper.GetBalance(neutrinoContractData.AuctionContractAddress,
                         neutrinoContractData.BondAssetId);
-                    var deficitWithoutBalance = supply - reserve * controlContractData.Price / 100 * Pauli / Wavelet;
-                    var bondDeficit = deficitWithoutBalance / Pauli - bondAuctionBalance;
-                    
-                    Logger.Info($"Deficit:{bondDeficit}");
+                    var deficit = (supply - reserve * controlContractData.Price / 100 * Pauli / Wavelet)/Pauli;
+
+                    Logger.Info($"Deficit:{deficit}");
                     Logger.Info($"BondBalance:{bondAuctionBalance}");
 
-                    if (bondDeficit >= MinBondGenerated)
+                    if (deficit  - bondAuctionBalance >= MinBondGenerated)
                     {
                         Logger.Info("Generate bond");
                         var generateBondTx = node.InvokeScript(account, settings.ContractAddress,
@@ -101,13 +104,14 @@ namespace NeutrinoOracles.PacemakerOracle
                         var txId = await wavesHelper.WaitTxAndGetId(generateBondTx);
                         Logger.Info($"Generate bond tx id:{txId}");
                     }
-                    else if (bondDeficit < 0 && !string.IsNullOrEmpty(neutrinoContractData.Orderbook))
+                    
+                    if (deficit < 0 && !string.IsNullOrEmpty(neutrinoContractData.Orderbook))
                     {
                         Logger.Info("Execute order for liquidation");
 
                         var orders = neutrinoContractData.Orderbook.Split("_");
                         long totalExecute = 0;
-                        var surplus = Math.Abs(bondDeficit);
+                        var surplus = Math.Abs(deficit);
                         foreach (var order in orders.Where(x => !string.IsNullOrEmpty(x)))
                         {
                             var total = neutrinoContractData.TotalByOrder[order];
@@ -123,7 +127,7 @@ namespace NeutrinoOracles.PacemakerOracle
                             var txId = await wavesHelper.WaitTxAndGetId(exTx);
                             Logger.Info($"Execute order tx id:{txId}");
                         }
-                    }else  if (deficitWithoutBalance > 0 && bondAuctionBalance > 0 && !string.IsNullOrEmpty(auctionControlData.Orderbook))
+                    }else  if (deficit > 0 && bondAuctionBalance > 0 && !string.IsNullOrEmpty(auctionControlData.Orderbook))
                     {
                         Logger.Info("Execute order for auction");
 
@@ -135,7 +139,7 @@ namespace NeutrinoOracles.PacemakerOracle
                             var totalFilled = auctionControlData.FilledTotalByOrder?.GetValueOrDefault(order) ?? 0;
                             var amount = (total - totalFilled) / Pauli * 100 /
                                          auctionControlData.PriceByOrder[order];
-                            if (totalExecute >= bondAuctionBalance)
+                            if (totalExecute >= deficit)
                                 break;
 
                             totalExecute += amount;

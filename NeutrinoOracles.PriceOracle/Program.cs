@@ -58,7 +58,7 @@ namespace NeutrinoOracles.PriceOracle
                     
                     if (height > controlContractData.ProvidingExpireBlock && controlContractData.IsPendingPrice)
                     {
-                        var tx = nodeApi.InvokeScript(account, settings.ContractAddress, "finalizeCurrentPrice", null);
+                        var tx = nodeApi.InvokeScript(account, settings.ContractAddress, "finilizeCurrentPrice", null);
                         Logger.Info($"Tx finalize current price: {(string) JObject.Parse(tx)["id"]}");
                         Logger.Debug(tx);
                     }
