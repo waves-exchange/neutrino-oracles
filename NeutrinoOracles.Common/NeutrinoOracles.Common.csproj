@@ -6,6 +6,8 @@
 
     <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" Version="12.0.3-beta2" />
+      <PackageReference Include="RestSharp" Version="106.6.10" />
+      <PackageReference Include="WavesPlatform.WavesCS" Version="1.2.3" />
     </ItemGroup>
 
 </Project>

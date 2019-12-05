@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using NeutrinoOracles.Common.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using WavesCS;
 
 namespace NeutrinoOracles.Common.Helpers
 {
@@ -13,11 +18,13 @@ namespace NeutrinoOracles.Common.Helpers
     {
         private const int MaxWaitSec = 60;
         private readonly string _nodeUrl;
+        private readonly char _chainId;
         private readonly HttpClient _httpClient = new HttpClient();
         
-        public WavesHelper(string nodeUrl)
+        public WavesHelper(string nodeUrl, char chainId)
         {
             _nodeUrl = nodeUrl;
+            _chainId = chainId;
         }
         
         public string GetTxId(string json)
@@ -37,6 +44,19 @@ namespace NeutrinoOracles.Common.Helpers
             var response = JObject.Parse(await SendRequest(url));
             return (long)response["balance"];
         }
+
+        public async Task<List<ActiveLeaseTx>> GetActiveLease(string address)
+        {
+            var response = await SendRequest($"{_nodeUrl}/leasing/active/{address}");
+            var result = JsonConvert.DeserializeObject<List<ActiveLeaseTx>>(response);
+            return result;
+        }
+        public async Task<DetailsBalance> GetDetailsBalance(string address)
+        {
+            var response = await SendRequest($"{_nodeUrl}/addresses/balance/details/{address}");
+            var result = JsonConvert.DeserializeObject<DetailsBalance>(response);
+            return result;
+        }
         public async Task<List<AccountDataResponse>> GetDataByAddress(string address)
         {
             var response = await SendRequest(_nodeUrl + "/addresses/data/" + address);
@@ -52,6 +72,16 @@ namespace NeutrinoOracles.Common.Helpers
         {
             return await SendRequest(_nodeUrl + "/transactions/info/" + txId);
         }
+
+        public async Task<string> Broadcast(string data)
+        {
+            var httpContent = new StringContent(data, Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync($"{_nodeUrl}/transactions/broadcast", httpContent);
+            var result = await response.Content.ReadAsStringAsync();
+            response.EnsureSuccessStatusCode();
+            return result;
+        }
+
         public async Task<string> WaitTxAndGetId(string tx)
         {
             var txId = GetTxId(tx);

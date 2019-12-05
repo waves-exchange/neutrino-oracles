@@ -4,7 +4,7 @@ using NeutrinoOracles.Common.Attributes;
 
 namespace NeutrinoOracles.Common.Models
 {
-    public class AuctionAccountData
+    public class LiquidationAccountData
     {
         [AccountDataConvertInfo("orderbook")]
         public string Orderbook { get; set; }
@@ -14,8 +14,5 @@ namespace NeutrinoOracles.Common.Models
         
         [AccountDataConvertInfo("order_filled_total_")]  
         public Dictionary<string, long> FilledTotalByOrder { get; set; }
-        
-        [AccountDataConvertInfo("order_price_")]  
-        public Dictionary<string, long> PriceByOrder { get; set; }
     }
 }

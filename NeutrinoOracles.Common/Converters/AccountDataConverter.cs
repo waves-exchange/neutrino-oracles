@@ -13,11 +13,17 @@ namespace NeutrinoOracles.Common.Converters
         public static NeutrinoAccountData ToNeutrinoAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
             To<NeutrinoAccountData>(keyValuePairs);
         
+        public static LiquidationAccountData ToLiquidationAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
+            To<LiquidationAccountData>(keyValuePairs);
+        
         public static AuctionAccountData ToAuctionAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
             To<AuctionAccountData>(keyValuePairs);
         
         public static ControlAccountData ToControlAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
             To<ControlAccountData>(keyValuePairs);
+        
+        public static OracleAccountData ToOracleAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
+            To<OracleAccountData>(keyValuePairs);
 
         private static T To<T>(IReadOnlyCollection<AccountDataResponse> keyValuePairs)
         {

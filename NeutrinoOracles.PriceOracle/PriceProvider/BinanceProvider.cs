@@ -7,17 +7,16 @@ using Newtonsoft.Json.Linq;
 
 namespace NeutrinoOracles.PriceOracle.PriceProvider
 {
-    public class BinanceProvider : IPriceProvider
+    public class BinanceProvider
     {
-        public int Weight { get; } = 3;
-
-        public async Task<decimal> GetPrice()
+        public async Task<decimal> GetPrice(string pair)
         {
-            var url = new UriBuilder("https://api.binance.com/api/v3/ticker/price?symbol=WAVESUSDT");
+            var url = new UriBuilder("https://api.binance.com/api/v3/ticker/price?symbol="+pair);
             var client = new WebClient();
             client.Headers.Add("Accepts", "application/json");
             var json = JObject.Parse(await client.DownloadStringTaskAsync(url.ToString()));
             return (decimal) json["price"];
         }
+
     }
 }
