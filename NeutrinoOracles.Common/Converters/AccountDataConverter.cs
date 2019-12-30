@@ -21,9 +21,6 @@ namespace NeutrinoOracles.Common.Converters
         
         public static ControlAccountData ToControlAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
             To<ControlAccountData>(keyValuePairs);
-        
-        public static OracleAccountData ToOracleAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
-            To<OracleAccountData>(keyValuePairs);
 
         private static T To<T>(IReadOnlyCollection<AccountDataResponse> keyValuePairs)
         {

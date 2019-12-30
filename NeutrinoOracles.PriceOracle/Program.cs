@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using NeutrinoOracles.Common.Converters;
 using NeutrinoOracles.Common.Helpers;
+using NeutrinoOracles.Common.Keys;
+using NeutrinoOracles.Common.Models;
 using NeutrinoOracles.PriceOracle.Models;
 using NeutrinoOracles.PriceOracle.PriceProvider;
 using NeutrinoOracles.PriceOracle.PriceProvider.Interfaces;
@@ -20,7 +22,7 @@ namespace NeutrinoOracles.PriceOracle
     internal static class Program
     {
         private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-        private static BinanceProvider _binanceProvider = new BinanceProvider();
+        private static readonly BinanceProvider BinanceProvider = new BinanceProvider();
         private static async Task Main(string[] args)
         {
             var configuration = new ConfigurationBuilder()
@@ -35,54 +37,60 @@ namespace NeutrinoOracles.PriceOracle
             
             var seed = args[0];
             var settings = configuration.Get<Settings>();
-
-            var nodeApi = new Node(settings.NodeUrl, settings.ChainId);
             var account = PrivateKeyAccount.CreateFromSeed(seed, settings.ChainId);
+            var nodeApi = new Node(settings.NodeUrl, settings.ChainId);
             var wavesHelper = new WavesHelper(settings.NodeUrl, settings.ChainId);
             
             Logger.Info("Start price oracle");
+            
+            var oracles = ((string)(await wavesHelper.GetDataByAddressAndKey(settings.ContractAddress, ControlKeys.Oracles)).Value).Split(",");
+            var coefficientValue = (int)(await wavesHelper.GetDataByAddressAndKey(settings.ContractAddress, ControlKeys.Coefficient)).Value;
+            
             while (true)
             {
                 try
                 {
+                    var newPriceRequest = GetPrice();
                     var height = await wavesHelper.GetHeight();
                     Logger.Info($"Height:{height}");
-                    var controlContractData = AccountDataConverter.ToControlAccountData(await wavesHelper.GetDataByAddress(settings.ContractAddress));
-
-                    var newPrice = await GetPrice();
                     
-                    var oracleData = AccountDataConverter.ToOracleAccountData(await wavesHelper.GetDataByAddress(account.Address));
-                    if (!oracleData.PriceByHeight?.ContainsKey(Convert.ToString(height)) ?? true)
+                    var priceKey = OracleKeys.GetPriceByHeight(height);
+                    var oraclePriceRequest = wavesHelper.GetDataByAddress(account.Address, priceKey);
+                    var oraclePriceRequests = oracles.Select(oracle => wavesHelper.GetDataByAddress(oracle, priceKey)).ToList();
+
+                    var oraclePrices = oraclePriceRequest.Result;
+                    var price = newPriceRequest.Result;
+                    Logger.Info($"New price:{price}");
+                    
+                    if (!oraclePrices.Any())
                     {
-                        var tx = nodeApi.PutData(account, new Dictionary<string, object>() { {"price_" + height, newPrice }});
-                        Logger.Info($"Tx set current price ({newPrice}): {(string) JObject.Parse(tx)["id"]}");
+                        var tx = nodeApi.PutData(account, new Dictionary<string, object>() { {"price_" + height, price }});
+                        Logger.Info($"Tx set current price ({price}): {(string) JObject.Parse(tx)["id"]}");
                         Logger.Debug(tx);
                     }
-
-                    var oraclePriceCount = 0;
-                    foreach (var oracle in controlContractData.Oracles.Split(","))
+                    else
                     {
-                        var anyOracleData = AccountDataConverter.ToOracleAccountData(await wavesHelper.GetDataByAddress(oracle));
-                        if (anyOracleData.PriceByHeight?.ContainsKey(Convert.ToString(height)) ?? false)
-                            oraclePriceCount++;
-                    }
-
-                    Logger.Debug("Oracle price count:" + oraclePriceCount);
-                    if (oraclePriceCount >= controlContractData.BftCoefficientOracle && (!controlContractData.PriceByHeight?.ContainsKey(Convert.ToString(height)) ?? true))
-                    {
-                        var tx = nodeApi.InvokeScript(account, settings.ContractAddress, "finalizeCurrentPrice", null);
-                        Logger.Info($"Tx finalize current price: {(string) JObject.Parse(tx)["id"]}");
-                        Logger.Debug(tx);
+                        Logger.Info($"My price:{(int)oraclePrices[0].Value}");
                     }
                     
-                    Logger.Info($"Сurrent price:{controlContractData.Price}");
-                    Logger.Info($"New price:{newPrice}");
+                    var oraclePriceCount = oraclePriceRequests.Select(request => request.Result).Count(oraclePrice => oraclePrice.Any());
+                    Logger.Debug($"Oracle price count:{oraclePriceCount}");
+                    
+                    if (oraclePriceCount >= coefficientValue && (!controlContractData.PriceByHeight?.ContainsKey(Convert.ToString(height)) ?? true))
+                    {
+                        var transaction = new InvokeScriptTransaction(settings.ChainId, account.PublicKey , settings.ContractAddress, "finalizeCurrentPrice", null, null, 0.005M, null);
+                        transaction.Sign(account, 0);
+                        var jsonTx = transaction.GetJsonWithSignature().ToJson();
+                        await wavesHelper.Broadcast(jsonTx);
+                        Logger.Info($"Tx finalize current price: {jsonTx}");
+                        Logger.Debug(jsonTx);
+                    }*/
                 }
                 catch (Exception ex)
                 {
                     Logger.Error(ex);
                 }
-
+                
                 Logger.Info($"Sleep");
                 await Task.Delay(TimeSpan.FromSeconds(settings.TimeoutSec));
             }
@@ -90,9 +98,9 @@ namespace NeutrinoOracles.PriceOracle
 
         private static async Task<long> GetPrice()
         {
-            var priceOne = await _binanceProvider.GetPrice("WAVESUSDT");
-            var priceTwo = await _binanceProvider.GetPrice("WAVESBTC");
-            var priceBtcUsdt = await _binanceProvider.GetPrice("BTCUSDT");
+            var priceOne = await BinanceProvider.GetPrice("WAVESUSDT");
+            var priceTwo = await BinanceProvider.GetPrice("WAVESBTC");
+            var priceBtcUsdt = await BinanceProvider.GetPrice("BTCUSDT");
             var price = (priceOne + priceTwo*priceBtcUsdt)/2;
             return Convert.ToInt64(Math.Round(price, 2, MidpointRounding.AwayFromZero)*100);
         }

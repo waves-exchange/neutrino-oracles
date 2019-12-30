@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -57,7 +58,13 @@ namespace NeutrinoOracles.Common.Helpers
             var result = JsonConvert.DeserializeObject<DetailsBalance>(response);
             return result;
         }
-        public async Task<List<AccountDataResponse>> GetDataByAddress(string address)
+        public async Task<AccountDataResponse> GetDataByAddressAndKey(string address, string key)
+        {
+            var response = await SendRequest(_nodeUrl + "/addresses/data/" + address);
+            var result = JsonConvert.DeserializeObject<List<AccountDataResponse>>(response);
+            return result;
+        }
+        public async Task<List<AccountDataResponse>> GetDataByAddress(string address, string regexp = null)
         {
             var response = await SendRequest(_nodeUrl + "/addresses/data/" + address);
             var result = JsonConvert.DeserializeObject<List<AccountDataResponse>>(response);
@@ -76,10 +83,16 @@ namespace NeutrinoOracles.Common.Helpers
         public async Task<string> Broadcast(string data)
         {
             var httpContent = new StringContent(data, Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync($"{_nodeUrl}/transactions/broadcast", httpContent);
-            var result = await response.Content.ReadAsStringAsync();
-            response.EnsureSuccessStatusCode();
-            return result;
+            using ( var response = await _httpClient.PostAsync($"{_nodeUrl}/transactions/broadcast", httpContent))
+            {
+                var result = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception(result);
+                }
+                return result;
+            }
+           
         }
 
         public async Task<string> WaitTxAndGetId(string tx)
@@ -101,9 +114,12 @@ namespace NeutrinoOracles.Common.Helpers
         }
         private async Task<string> SendRequest(string url)
         {
-            var response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync();
+            using (var response = await _httpClient.GetAsync(url))
+            {
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync();
+            }
+
         }
     }
 }

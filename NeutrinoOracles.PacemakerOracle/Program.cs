@@ -40,6 +40,7 @@ namespace NeutrinoOracles.PacemakerOracle
             var node = new Node(settings.NodeUrl, settings.ChainId);
             var contractPubKey = Base58.Decode((settings.ContractPubKey));
             var contractAddress = AddressEncoding.GetAddressFromPublicKey(contractPubKey, settings.ChainId);
+            
             while (true)
             {
                 try
@@ -64,7 +65,7 @@ namespace NeutrinoOracles.PacemakerOracle
 
                     Logger.Info($"Price:{controlContractData.Price}");
                     
-                    var neutrinoContractBalance = await wavesHelper.GetDetailsBalance(contractAddress);
+             
 
                     var addresses = new List<string>();
                     if(neutrinoContractData.BalanceLockNeutrinoByUser != null)
@@ -72,10 +73,13 @@ namespace NeutrinoOracles.PacemakerOracle
                     if(neutrinoContractData.BalanceLockWavesByUser != null)
                         addresses.AddRange(neutrinoContractData.BalanceLockWavesByUser?.Where(x=>x.Value > 0).Select(x=>x.Key));
 
-                    long totalWithdraw = 0;
+                    bool isNearestWithdraw = false;
                     foreach (var address in addresses)
                     {
                         var withdrawBlock = neutrinoContractData.BalanceUnlockBlockByAddress.GetValueOrDefault(address);
+
+                        isNearestWithdraw = withdrawBlock <= height + 100;
+                        
                         if (height < withdrawBlock)
                             continue;
 
@@ -92,19 +96,20 @@ namespace NeutrinoOracles.PacemakerOracle
 
                         if (withdrawNeutrinoAmount > 0)
                         {
-                            var availableBalance = neutrinoContractBalance.Available - totalWithdraw;
+                            var neutrinoContractBalance = await wavesHelper.GetDetailsBalance(contractAddress);
                             var wavesAmount = CurrencyConvert.NeutrinoToWaves(withdrawNeutrinoAmount, priceByHeight);
-
-                            if (wavesAmount > availableBalance)
+                            if (wavesAmount > neutrinoContractBalance.Available)
                             {
                                 if (!settings.Leasing.IsLeasingProvider)
                                     continue;
 
                                 var totalLeasingCancelAmount = 0L;
                                 var activeLeaseTxs = await wavesHelper.GetActiveLease(settings.Leasing.NodeAddress);
-                                foreach (var leasingTx in activeLeaseTxs.OrderBy(x=>x.Amount))
+
+                                var neededAmount = wavesAmount - neutrinoContractBalance.Available;
+                                foreach (var leasingTx in activeLeaseTxs.OrderByDescending(x=>x.Timestamp).Where(x=>x.Sender == contractAddress))
                                 {
-                                    if(totalLeasingCancelAmount >= wavesAmount)
+                                    if(totalLeasingCancelAmount >= neededAmount)
                                         break;
                                     
                                     totalLeasingCancelAmount += leasingTx.Amount;
@@ -122,8 +127,6 @@ namespace NeutrinoOracles.PacemakerOracle
                                     Logger.Info($"Cancel lease tx:{id} (LeaseId:{cancelLease.LeaseId})");
                                 }
                             }
-
-                            totalWithdraw += wavesAmount;
                         }
 
                         var withdrawTx = node.InvokeScript(account, contractAddress, "withdraw",
@@ -132,63 +135,9 @@ namespace NeutrinoOracles.PacemakerOracle
                         Logger.Info($"Withdraw tx id:{txId} (Address:{address})");
                     }
                     
-                    if (settings.Leasing.IsLeasingProvider)
+                    if (settings.Leasing.IsLeasingProvider && !isNearestWithdraw)
                     {
-                        var leasingAmountForOneTxInWavelet = settings.Leasing.LeasingAmountForOneTx * CurrencyConvert.Wavelet;
-                        
-                        var minWaves = Convert.ToInt64((neutrinoContractBalance.Regular-totalWithdraw)/100*(100-settings.Leasing.LeasingSharePercent));
-                        var availableBalance = neutrinoContractBalance.Available - totalWithdraw;
-                        var neededAmount = minWaves - availableBalance;
-                        var activeLeaseTxs = await wavesHelper.GetActiveLease(settings.Leasing.NodeAddress);
-                        var totalLeasingCancelAmount = 0L;
-                        if (neededAmount > leasingAmountForOneTxInWavelet)
-                        {
-                            foreach (var leasingTx in activeLeaseTxs.OrderBy(x => x.Amount).Where(x=>x.Sender == contractAddress))
-                            {
-                                if (totalLeasingCancelAmount >= neededAmount)
-                                    break;
-
-                                totalLeasingCancelAmount += leasingTx.Amount;
-                                var cancelLease = new CancelLeasingTransaction(settings.ChainId, contractPubKey,
-                                    leasingTx.Id, 0.005m);
-                                cancelLease.Sign(account);
-                                // shit code. Bug in wavesCs
-                                var json = JObject.Parse(cancelLease.GetJsonWithSignature().ToJson());
-                                json.Add("proofs", new JArray
-                                {
-                                    cancelLease.Proofs
-                                        .Take(Array.FindLastIndex(cancelLease.Proofs, p => p != null && p.Length > 0) +
-                                              1)
-                                        .Select(p => p == null ? "" : p.ToBase58())
-                                        .ToArray()
-                                });
-                                json.Add("version", 2);
-                                json.Add("chainId", settings.ChainId);
-                                var id = await wavesHelper.WaitTxAndGetId(await wavesHelper.Broadcast(json.ToString()));
-                                Logger.Info($"Cancel lease tx:{id} (LeaseId:{cancelLease.LeaseId})");
-                            }
-                        }
-
-                        var expectedLeasingBalance = Convert.ToInt64((neutrinoContractBalance.Regular-totalWithdraw)/100*settings.Leasing.LeasingSharePercent);
-                        var leasingBalance = neutrinoContractBalance.Regular - neutrinoContractBalance.Available;
-                        var neededLeaseTx = expectedLeasingBalance - leasingBalance;
-
-                       
-                        while(neededLeaseTx >= leasingAmountForOneTxInWavelet)
-                        {
-                            neededLeaseTx -= leasingAmountForOneTxInWavelet;
-                            var leaseTx = new LeaseTransaction(settings.ChainId, contractPubKey, settings.Leasing.NodeAddress, settings.Leasing.LeasingAmountForOneTx, 0.005m);
-                            leaseTx.Sign(account);
-                            // shit code. Bug in wavesCs
-                            var json = JObject.Parse(leaseTx.GetJsonWithSignature().ToJson());
-                            json.Add("proofs", new JArray { leaseTx.Proofs.Take(Array.FindLastIndex(leaseTx.Proofs, p => p != null && p.Length > 0) + 1)
-                                .Select(p => p == null ? "" : p.ToBase58())
-                                .ToArray()
-                            });
-                            json.Add("version", 2);
-                            var id = await wavesHelper.WaitTxAndGetId(await wavesHelper.Broadcast(json.ToString()));
-                            Logger.Info($"Lease tx:{id}");
-                        }
+                        await RebalanceLeasing(wavesHelper, settings, contractAddress, account);
                     }
                     
                     var supply = totalNeutrinoSupply - neutrinoBalance + neutrinoContractData.BalanceLockNeutrino;
@@ -197,15 +146,17 @@ namespace NeutrinoOracles.PacemakerOracle
                     Logger.Info($"Supply:{supply}");
                     Logger.Info($"Reserve:{reserve}");
                     
+                    var liquidationContractBalanceN = await wavesHelper.GetBalance(neutrinoContractData.LiquidationContractAddress, neutrinoContractData.NeutrinoAssetId);
+
+                    var liquidationContractBalance = CurrencyConvert.NeutrinoToBond(liquidationContractBalanceN);
                     var bondAuctionBalance = await wavesHelper.GetBalance(neutrinoContractData.AuctionContractAddress,
                         neutrinoContractData.BondAssetId);
-                    var deficit = CurrencyConvert.NeutrinoToBond(supply - CurrencyConvert.WavesToNeutrino(reserve, controlContractData.Price));
-                    var liquidationContractBalance = CurrencyConvert.NeutrinoToBond(await wavesHelper.GetBalance(neutrinoContractData.LiquidationContractAddress, neutrinoContractData.NeutrinoAssetId));
-                    
+                    var deficit = CurrencyConvert.NeutrinoToBond(supply - liquidationContractBalanceN - CurrencyConvert.WavesToNeutrino(reserve, controlContractData.Price));
+               
                     Logger.Info($"Deficit:{deficit}");
                     Logger.Info($"BondBalance:{bondAuctionBalance}");
 
-                    if ((deficit > 0 && deficit - bondAuctionBalance >= CurrencyConvert.NeutrinoToBond(supply)*DeficitOffset/100) || (deficit*-1) - liquidationContractBalance > 0)
+                    if ((deficit > 0 && deficit - bondAuctionBalance >= CurrencyConvert.NeutrinoToBond(supply)*DeficitOffset/100) || ((deficit*-1) - liquidationContractBalance > 2 && liquidationContractBalance == 0))
                     {
                         Logger.Info("Transfer to auction");
                         var generateBondTx = node.InvokeScript(account, contractAddress,
@@ -213,7 +164,7 @@ namespace NeutrinoOracles.PacemakerOracle
                         var txId = await wavesHelper.WaitTxAndGetId(generateBondTx);
                         Logger.Info($"Transfer to auction tx id:{txId}");
                     }
-                    var surplusWithoutLiquidation =  CurrencyConvert.NeutrinoToBond(CurrencyConvert.WavesToNeutrino(reserve, controlContractData.Price) - supply - CurrencyConvert.BondToNeutrino(liquidationContractBalance));
+                    var surplusWithoutLiquidation =  CurrencyConvert.NeutrinoToBond(CurrencyConvert.WavesToNeutrino(reserve, controlContractData.Price) - (supply - CurrencyConvert.BondToNeutrino(liquidationContractBalance)));
                     if (surplusWithoutLiquidation > 0 && liquidationContractBalance > 0 &&  !string.IsNullOrEmpty(liquidationControlData.Orderbook))
                     {
                         Logger.Info("Execute order for liquidation");
@@ -275,6 +226,73 @@ namespace NeutrinoOracles.PacemakerOracle
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(settings.TimeoutSec));
+            }
+        }
+
+        private static async Task RebalanceLeasing(WavesHelper wavesHelper, Settings settings, string contractAddress, PrivateKeyAccount account)
+        {
+            var contractPubKey = Base58.Decode((settings.ContractPubKey));
+            
+            var neutrinoContractBalance = await wavesHelper.GetDetailsBalance(contractAddress);
+            var minWaves = Convert.ToInt64((neutrinoContractBalance.Regular) / 100 * (100 - settings.Leasing.LeasingSharePercent));
+            var activeLeaseTxs = await wavesHelper.GetActiveLease(settings.Leasing.NodeAddress);
+            var totalLeasingCancelAmount = 0L;
+            
+            if (minWaves > neutrinoContractBalance.Available)
+            {
+                var neededAmount = minWaves - neutrinoContractBalance.Available;
+                foreach (var leasingTx in activeLeaseTxs.OrderByDescending(x => x.Timestamp)
+                    .Where(x => x.Sender == contractAddress))
+                {
+                    if (totalLeasingCancelAmount >= neededAmount)
+                        break;
+
+                    totalLeasingCancelAmount += leasingTx.Amount;
+                    var cancelLease =
+                        new CancelLeasingTransaction(settings.ChainId, contractPubKey, leasingTx.Id, 0.005m);
+                    cancelLease.Sign(account);
+                    // shit code. Bug in wavesCs
+                    var json = JObject.Parse(cancelLease.GetJsonWithSignature().ToJson());
+                    json.Add("proofs", new JArray
+                    {
+                        cancelLease.Proofs
+                            .Take(Array.FindLastIndex(cancelLease.Proofs, p => p != null && p.Length > 0) +
+                                  1)
+                            .Select(p => p == null ? "" : p.ToBase58())
+                            .ToArray()
+                    });
+                    json.Add("version", 2);
+                    json.Add("chainId", settings.ChainId);
+                    var id = await wavesHelper.WaitTxAndGetId(await wavesHelper.Broadcast(json.ToString()));
+                    Logger.Info($"Cancel lease tx:{id} (LeaseId:{cancelLease.LeaseId})");
+                }
+            }
+            else if (neutrinoContractBalance.Available > minWaves + (settings.Leasing.LeasingAmountForOneTx * CurrencyConvert.Wavelet))
+            {
+                var expectedLeasingBalance = Convert.ToInt64((neutrinoContractBalance.Regular) / 100 *
+                                                             settings.Leasing.LeasingSharePercent);
+                var leasingBalance = neutrinoContractBalance.Regular - neutrinoContractBalance.Available;
+                var neededLeaseTx = expectedLeasingBalance - leasingBalance;
+
+
+                while (neededLeaseTx >= settings.Leasing.LeasingAmountForOneTx)
+                {
+                    neededLeaseTx -= settings.Leasing.LeasingAmountForOneTx;
+                    var leaseTx = new LeaseTransaction(settings.ChainId, contractPubKey, settings.Leasing.NodeAddress,
+                        settings.Leasing.LeasingAmountForOneTx, 0.005m);
+                    leaseTx.Sign(account);
+                    // shit code. Bug in wavesCs
+                    var json = JObject.Parse(leaseTx.GetJsonWithSignature().ToJson());
+                    json.Add("proofs", new JArray
+                    {
+                        leaseTx.Proofs.Take(Array.FindLastIndex(leaseTx.Proofs, p => p != null && p.Length > 0) + 1)
+                            .Select(p => p == null ? "" : p.ToBase58())
+                            .ToArray()
+                    });
+                    json.Add("version", 2);
+                    var id = await wavesHelper.WaitTxAndGetId(await wavesHelper.Broadcast(json.ToString()));
+                    Logger.Info($"Lease tx:{id}");
+                }
             }
         }
     }

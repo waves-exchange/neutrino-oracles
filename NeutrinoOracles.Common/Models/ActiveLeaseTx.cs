@@ -14,7 +14,7 @@ namespace NeutrinoOracles.Common.Models
         public string Id { get; set; }
         public int Type { get; set; }
         public int Version { get; set; }
-        public object Timestamp { get; set; }
+        public long Timestamp { get; set; }
         public int Height { get; set; }
         public string Signature { get; set; }
     }
