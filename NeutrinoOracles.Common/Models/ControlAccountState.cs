@@ -3,7 +3,7 @@ using NeutrinoOracles.Common.Attributes;
 
 namespace NeutrinoOracles.Common.Models
 {
-    public class ControlAccountData
+    public class ControlAccountState
     {
         [AccountDataConvertInfo("oracles")]
         public string Oracles { get; set; }

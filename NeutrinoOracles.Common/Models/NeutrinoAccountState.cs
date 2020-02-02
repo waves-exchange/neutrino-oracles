@@ -3,16 +3,16 @@ using NeutrinoOracles.Common.Attributes;
 
 namespace NeutrinoOracles.Common.Models
 {
-    public class NeutrinoAccountData
+    public class NeutrinoAccountState
     {
+        [AccountDataConvertInfo("liquidation_contract")]
+        public string LiquidationContract { get; set; } 
+        
         [AccountDataConvertInfo("control_contract")]
-        public string ControlContractAddress { get; set; }
+        public string ControlContract { get; set; } 
         
         [AccountDataConvertInfo("auction_contract")]
-        public string AuctionContractAddress { get; set; }
-        
-        [AccountDataConvertInfo("liquidation_contract")]
-        public string LiquidationContractAddress { get; set; }
+        public string AuctionContract { get; set; } 
         
         [AccountDataConvertInfo("neutrino_asset_id")]
         public string NeutrinoAssetId { get; set; } 

@@ -10,17 +10,17 @@ namespace NeutrinoOracles.Common.Converters
 {
     public class AccountDataConverter
     {
-        public static NeutrinoAccountData ToNeutrinoAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
-            To<NeutrinoAccountData>(keyValuePairs);
+        public static NeutrinoAccountState ToNeutrinoAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
+            To<NeutrinoAccountState>(keyValuePairs);
         
         public static LiquidationAccountData ToLiquidationAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
             To<LiquidationAccountData>(keyValuePairs);
         
-        public static AuctionAccountData ToAuctionAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
-            To<AuctionAccountData>(keyValuePairs);
+        public static AuctionAccountState ToAuctionAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
+            To<AuctionAccountState>(keyValuePairs);
         
-        public static ControlAccountData ToControlAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
-            To<ControlAccountData>(keyValuePairs);
+        public static ControlAccountState ToControlAccountData(IReadOnlyCollection<AccountDataResponse> keyValuePairs) =>
+            To<ControlAccountState>(keyValuePairs);
 
         private static T To<T>(IReadOnlyCollection<AccountDataResponse> keyValuePairs)
         {

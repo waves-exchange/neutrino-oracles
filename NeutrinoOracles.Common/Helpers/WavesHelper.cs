@@ -60,11 +60,11 @@ namespace NeutrinoOracles.Common.Helpers
         }
         public async Task<AccountDataResponse> GetDataByAddressAndKey(string address, string key)
         {
-            var response = await SendRequest(_nodeUrl + "/addresses/data/" + address);
-            var result = JsonConvert.DeserializeObject<List<AccountDataResponse>>(response);
+            var response = await SendRequest($"{_nodeUrl}/addresses/data/{address}/{key}");
+            var result = JsonConvert.DeserializeObject<AccountDataResponse>(response);
             return result;
         }
-        public async Task<List<AccountDataResponse>> GetDataByAddress(string address, string regexp = null)
+        public async Task<List<AccountDataResponse>> GetDataByAddress(string address)
         {
             var response = await SendRequest(_nodeUrl + "/addresses/data/" + address);
             var result = JsonConvert.DeserializeObject<List<AccountDataResponse>>(response);

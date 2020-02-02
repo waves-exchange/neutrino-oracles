@@ -2,20 +2,17 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
-using NeutrinoOracles.Common.Converters;
 using NeutrinoOracles.Common.Helpers;
 using NeutrinoOracles.Common.Keys;
 using NeutrinoOracles.Common.Models;
 using NeutrinoOracles.PriceOracle.Models;
 using NeutrinoOracles.PriceOracle.PriceProvider;
-using NeutrinoOracles.PriceOracle.PriceProvider.Interfaces;
 using Newtonsoft.Json.Linq;
 using NLog;
-using NLog.Fluent;
 using WavesCS;
+using InvokeScriptTransaction = WavesCS.InvokeScriptTransaction;
 
 namespace NeutrinoOracles.PriceOracle
 {
@@ -43,40 +40,44 @@ namespace NeutrinoOracles.PriceOracle
             
             Logger.Info("Start price oracle");
             
+            //TODO safe
             var oracles = ((string)(await wavesHelper.GetDataByAddressAndKey(settings.ContractAddress, ControlKeys.Oracles)).Value).Split(",");
-            var coefficientValue = (int)(await wavesHelper.GetDataByAddressAndKey(settings.ContractAddress, ControlKeys.Coefficient)).Value;
+            var bftCoefficient = (int)(await wavesHelper.GetDataByAddressAndKey(settings.ContractAddress, ControlKeys.Coefficient)).Value;
             
             while (true)
             {
                 try
                 {
-                    var newPriceRequest = GetPrice();
                     var height = await wavesHelper.GetHeight();
+                    
                     Logger.Info($"Height:{height}");
+                    var priceKeyByHeight = OracleKeys.GetPriceByHeight(height);
                     
-                    var priceKey = OracleKeys.GetPriceByHeight(height);
-                    var oraclePriceRequest = wavesHelper.GetDataByAddress(account.Address, priceKey);
-                    var oraclePriceRequests = oracles.Select(oracle => wavesHelper.GetDataByAddress(oracle, priceKey)).ToList();
+                    var controlPriceRequest = wavesHelper.GetDataByAddressAndKey(settings.ContractAddress, priceKeyByHeight);
+                  
+                    var oraclePriceRequests = oracles.Select(oracle => wavesHelper.GetDataByAddressAndKey(oracle, priceKeyByHeight)).ToList();
 
-                    var oraclePrices = oraclePriceRequest.Result;
-                    var price = newPriceRequest.Result;
-                    Logger.Info($"New price:{price}");
-                    
-                    if (!oraclePrices.Any())
+                    var thisOraclePrice = await wavesHelper.GetDataByAddressAndKey(account.Address, priceKeyByHeight);
+
+                    if (thisOraclePrice == null)
                     {
+                        var price = await GetPrice();
+                        Logger.Info($"New price:{price}");
+                        
                         var tx = nodeApi.PutData(account, new Dictionary<string, object>() { {"price_" + height, price }});
                         Logger.Info($"Tx set current price ({price}): {(string) JObject.Parse(tx)["id"]}");
                         Logger.Debug(tx);
                     }
                     else
                     {
-                        Logger.Info($"My price:{(int)oraclePrices[0].Value}");
+                        Logger.Info($"This oracle price:{(int)thisOraclePrice.Value}");
                     }
-                    
-                    var oraclePriceCount = oraclePriceRequests.Select(request => request.Result).Count(oraclePrice => oraclePrice.Any());
-                    Logger.Debug($"Oracle price count:{oraclePriceCount}");
-                    
-                    if (oraclePriceCount >= coefficientValue && (!controlContractData.PriceByHeight?.ContainsKey(Convert.ToString(height)) ?? true))
+
+                    var oraclePrices = oraclePriceRequests.Select(request => request.Result).Where(x=>x != null).ToList();
+                    Logger.Debug($"Oracle price count:{oraclePrices.Count}");
+
+                    var controlPrice = await controlPriceRequest;
+                    if (oraclePrices.Count >= bftCoefficient && controlPrice == null)
                     {
                         var transaction = new InvokeScriptTransaction(settings.ChainId, account.PublicKey , settings.ContractAddress, "finalizeCurrentPrice", null, null, 0.005M, null);
                         transaction.Sign(account, 0);
@@ -84,7 +85,7 @@ namespace NeutrinoOracles.PriceOracle
                         await wavesHelper.Broadcast(jsonTx);
                         Logger.Info($"Tx finalize current price: {jsonTx}");
                         Logger.Debug(jsonTx);
-                    }*/
+                    }
                 }
                 catch (Exception ex)
                 {
