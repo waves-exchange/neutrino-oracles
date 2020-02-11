@@ -14,9 +14,8 @@ namespace NeutrinoOracles.PacemakerOracle.Services
 {
     public class PacemakerService
     {
-        private const int DeficitOffset = 5;
         private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
-        
+        private readonly long _deficitOffset;
         private readonly WavesHelper _wavesHelper;
         private readonly LeasingSettings _leasingSettings;
         private readonly NeutrinoSettings _neutrinoSettings;
@@ -29,14 +28,15 @@ namespace NeutrinoOracles.PacemakerOracle.Services
         private LiquidationAccountData _liquidationAccountState;
         
         public PacemakerService(WavesHelper wavesHelper, Node node, PrivateKeyAccount account,
-            NeutrinoSettings neutrinoSettings, LeasingSettings leasingSettings)
+            NeutrinoSettings neutrinoSettings, LeasingSettings leasingSettings, long deficitOffset = 5)
         {
             _neutrinoApi = new NeutrinoApi(neutrinoSettings, wavesHelper, node, account);
 
             _wavesHelper = wavesHelper;
             _neutrinoSettings = neutrinoSettings;
             _leasingSettings = leasingSettings;
-            
+            _deficitOffset = deficitOffset;
+
         }
         
         public async Task InitOrUpdate()
@@ -173,7 +173,7 @@ namespace NeutrinoOracles.PacemakerOracle.Services
             var deficitInBonds = CurrencyConvert.NeutrinoToBond(_initInfo.Deficit);
           
             var requireDeficitBonds = deficitInBonds - _initInfo.AuctionBondBalance;
-            var minDeficitBonds = CurrencyConvert.NeutrinoToBond(_initInfo.Supply) * DeficitOffset / 100;
+            var minDeficitBonds = CurrencyConvert.NeutrinoToBond(_initInfo.Supply) * _deficitOffset / 100;
 
             var surplus = deficitInBonds * -1;
             var liquidationContractBalanceInBonds = CurrencyConvert.NeutrinoToBond(_initInfo.LiquidationNeutrinoBalance);

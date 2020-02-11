@@ -43,11 +43,14 @@ namespace NeutrinoOracles.PacemakerOracle
             
             var commands = new List<Command>()
             {
+                Command.TransferToAuction,
+                Command.ExecuteOrderLiquidation,
+                Command.ExecuteOrderAuction,
                 Command.Withdraw,
                 Command.RebalanceLeasing
             };
             
-            var pacemakerService = new PacemakerService(wavesHelper, node, account, settings.NeutrinoSettings, settings.Leasing);
+            var pacemakerService = new PacemakerService(wavesHelper, node, account, settings.NeutrinoSettings, settings.Leasing, settings.DeficitOffset);
             
             while (true)
             {
