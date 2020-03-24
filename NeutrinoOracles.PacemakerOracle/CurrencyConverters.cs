@@ -8,8 +8,8 @@ namespace NeutrinoOracles.PacemakerOracle
         public const decimal Pauli = 1000000;
         public static long NeutrinoToWaves(long amount, long price) => (long) (Convert.ToDecimal(amount * 100 / price)/Pauli * Wavelet);
         public static long WavesToNeutrino(long amount, long price) =>  (long) (Convert.ToDecimal(amount * price / 100)/Wavelet * Pauli); 
-        public static long NeutrinoToBond(long amount) => (long) Math.Floor(amount / Pauli);
-        public static long BondToNeutrino(long amount) => (long) Math.Floor(amount * Pauli);
+        public static long NeutrinoToBond(long amount) => amount;
+        public static long BondToNeutrino(long amount) => amount;
         public static long WavesToBond(long amount, long price) => NeutrinoToBond(WavesToNeutrino(amount, price));
 
     }
