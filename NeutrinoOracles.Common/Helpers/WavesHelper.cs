@@ -26,6 +26,7 @@ namespace NeutrinoOracles.Common.Helpers
         {
             _nodeUrl = nodeUrl;
             _chainId = chainId;
+            _httpClient.Timeout = TimeSpan.FromMinutes(10);
         }
         
         public string GetTxId(string json)
@@ -62,6 +63,12 @@ namespace NeutrinoOracles.Common.Helpers
         {
             var response = await SendRequest($"{_nodeUrl}/addresses/data/{address}/{key}");
             var result = JsonConvert.DeserializeObject<AccountDataResponse>(response);
+            return result;
+        }
+        public async Task<List<AccountDataResponse>> GetDataByAddressAndRegExp(string address, string regExp)
+        {
+            var response = await SendRequest($"{_nodeUrl}/addresses/data/{address}?matches={regExp}");
+            var result = JsonConvert.DeserializeObject<List<AccountDataResponse>>(response);
             return result;
         }
         public async Task<List<AccountDataResponse>> GetDataByAddress(string address)

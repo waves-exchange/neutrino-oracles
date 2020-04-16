@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using NeutrinoOracles.Common.Converters;
 using NeutrinoOracles.Common.Helpers;
+using NeutrinoOracles.Common.Keys;
 using NeutrinoOracles.Common.Models;
 using NeutrinoOracles.PacemakerOracle.Models;
 using Newtonsoft.Json;
@@ -26,7 +27,7 @@ namespace NeutrinoOracles.PacemakerOracle.Services
         private ControlAccountState _controlAccountState;
         private AuctionAccountState _auctionControlState;
         private LiquidationAccountData _liquidationAccountState;
-        
+
         public PacemakerService(WavesHelper wavesHelper, Node node, PrivateKeyAccount account,
             NeutrinoSettings neutrinoSettings, LeasingSettings leasingSettings, long deficitOffset = 5)
         {
@@ -38,37 +39,54 @@ namespace NeutrinoOracles.PacemakerOracle.Services
             _deficitOffset = deficitOffset;
 
         }
-        
+
         public async Task InitOrUpdate()
         {
             _initInfo = new InitPacemakerInfo();
-            _neutrinoAccountState = AccountDataConverter.ToNeutrinoAccountData(await _wavesHelper.GetDataByAddress(_neutrinoSettings.NeutrinoAddress));
-            _controlAccountState = AccountDataConverter.ToControlAccountData(await _wavesHelper.GetDataByAddress(_neutrinoSettings.ControlAddress));
-            _auctionControlState = AccountDataConverter.ToAuctionAccountData(await _wavesHelper.GetDataByAddress(_neutrinoSettings.AuctionAddress));
-            _liquidationAccountState = AccountDataConverter.ToLiquidationAccountData(await _wavesHelper.GetDataByAddress(_neutrinoSettings.LiquidationAddress));
+            _neutrinoAccountState =
+                AccountDataConverter.ToNeutrinoAccountData(
+                    await _wavesHelper.GetDataByAddress(_neutrinoSettings.NeutrinoAddress));
+
+            _auctionControlState =
+                AccountDataConverter.ToAuctionAccountData(
+                    await _wavesHelper.GetDataByAddress(_neutrinoSettings.AuctionAddress));
+            _liquidationAccountState =
+                AccountDataConverter.ToLiquidationAccountData(
+                    await _wavesHelper.GetDataByAddress(_neutrinoSettings.LiquidationAddress));
 
             _initInfo.TotalNeutrinoSupply = await _wavesHelper.GetTotalSupply(_neutrinoAccountState.NeutrinoAssetId);
-            
-            _initInfo.NeutrinoBalance = await _wavesHelper.GetBalance(_neutrinoSettings.NeutrinoAddress, _neutrinoAccountState.NeutrinoAssetId);
+
+            _initInfo.NeutrinoBalance = await _wavesHelper.GetBalance(_neutrinoSettings.NeutrinoAddress,
+                _neutrinoAccountState.NeutrinoAssetId);
             _initInfo.WavesBalance = await _wavesHelper.GetBalance(_neutrinoSettings.NeutrinoAddress);
 
             _initInfo.Height = await _wavesHelper.GetHeight();
+
+            var price = await _wavesHelper.GetDataByAddressAndKey(_neutrinoSettings.ControlAddress, "price");
             Logger.Info("New height: " + _initInfo.Height);
-            Logger.Info($"Price:{_controlAccountState.Price}");
+            Logger.Info($"Price:{price.Value}");
 
-            _initInfo.LiquidationNeutrinoBalance = await _wavesHelper.GetBalance(_neutrinoSettings.LiquidationAddress, _neutrinoAccountState.NeutrinoAssetId);
-            _initInfo.AuctionBondBalance = await _wavesHelper.GetBalance(_neutrinoSettings.AuctionAddress, _neutrinoAccountState.BondAssetId);
+            _initInfo.LiquidationNeutrinoBalance = await _wavesHelper.GetBalance(_neutrinoSettings.LiquidationAddress,
+                _neutrinoAccountState.NeutrinoAssetId);
+            _initInfo.AuctionBondBalance =
+                await _wavesHelper.GetBalance(_neutrinoSettings.AuctionAddress, _neutrinoSettings.BondAssetId);
 
-            _initInfo.Supply = _neutrinoAccountState.BalanceLockNeutrino + _initInfo.TotalNeutrinoSupply - _initInfo.NeutrinoBalance - _initInfo.LiquidationNeutrinoBalance;
+            _initInfo.Supply = _neutrinoAccountState.BalanceLockNeutrino + _initInfo.TotalNeutrinoSupply -
+                               _initInfo.NeutrinoBalance - _initInfo.LiquidationNeutrinoBalance;
             _initInfo.Reserve = _initInfo.WavesBalance - _neutrinoAccountState.BalanceLockWaves;
 
-            _initInfo.Deficit = _initInfo.Supply - CurrencyConvert.WavesToNeutrino(_initInfo.Reserve, _controlAccountState.Price);
-            
+            _initInfo.Deficit =
+                _initInfo.Supply - CurrencyConvert.WavesToNeutrino(_initInfo.Reserve, (long) price.Value);
+
             Logger.Debug($"Init info: {JsonConvert.SerializeObject(_initInfo)}");
         }
 
         public async Task WithdrawAllUser()
         {
+            _controlAccountState =
+                AccountDataConverter.ToControlAccountData(
+                    await _wavesHelper.GetDataByAddress(_neutrinoSettings.ControlAddress));
+
             var addresses = new List<string>();
 
             if (_neutrinoAccountState.BalanceLockNeutrinoByUser != null)
@@ -128,14 +146,15 @@ namespace NeutrinoOracles.PacemakerOracle.Services
                 Logger.Info($"Withdraw tx id:{withdrawTxId} (Address:{address})");
             }
         }
-        
+
         public async Task RebalanceLeasing()
         {
             var neutrinoContractBalance = await _wavesHelper.GetDetailsBalance(_neutrinoSettings.NeutrinoAddress);
-            var minWaves = Convert.ToInt64((neutrinoContractBalance.Regular) / 100 * (100 - _leasingSettings.LeasingSharePercent));
+            var minWaves = Convert.ToInt64((neutrinoContractBalance.Regular) / 100 *
+                                           (100 - _leasingSettings.LeasingSharePercent));
             var activeLeaseTxs = await _wavesHelper.GetActiveLease(_leasingSettings.NodeAddress);
             var totalLeasingCancelAmount = 0L;
-            
+
             if (minWaves > neutrinoContractBalance.Available)
             {
                 var neededAmount = minWaves - neutrinoContractBalance.Available;
@@ -146,12 +165,13 @@ namespace NeutrinoOracles.PacemakerOracle.Services
                         break;
 
                     totalLeasingCancelAmount += leasingTx.Amount;
-                    
+
                     var cancelLeaseTxId = await _neutrinoApi.CancelLease(leasingTx.Id);
                     Logger.Info($"Cancel lease tx:{leasingTx.Id} (LeaseId:{cancelLeaseTxId})");
                 }
             }
-            else if (neutrinoContractBalance.Available > minWaves + (_leasingSettings.LeasingAmountForOneTx * CurrencyConvert.Wavelet))
+            else if (neutrinoContractBalance.Available >
+                     minWaves + (_leasingSettings.LeasingAmountForOneTx * CurrencyConvert.Wavelet))
             {
                 var expectedLeasingBalance = Convert.ToInt64((neutrinoContractBalance.Regular) / 100 *
                                                              _leasingSettings.LeasingSharePercent);
@@ -162,7 +182,8 @@ namespace NeutrinoOracles.PacemakerOracle.Services
                 while (neededLeaseTx >= _leasingSettings.LeasingAmountForOneTx)
                 {
                     neededLeaseTx -= _leasingSettings.LeasingAmountForOneTx;
-                    var leaseTxId = await _neutrinoApi.Lease(_leasingSettings.NodeAddress, _leasingSettings.LeasingAmountForOneTx);
+                    var leaseTxId = await _neutrinoApi.Lease(_leasingSettings.NodeAddress,
+                        _leasingSettings.LeasingAmountForOneTx);
                     Logger.Info($"Lease tx:{leaseTxId}");
                 }
             }
@@ -170,16 +191,16 @@ namespace NeutrinoOracles.PacemakerOracle.Services
 
         public async Task TransferToAuction()
         {
+            var auctionNBAmount = _initInfo.Supply - _initInfo.AuctionBondBalance;
+
             var deficitInBonds = CurrencyConvert.NeutrinoToBond(_initInfo.Deficit);
-          
-            var requireDeficitBonds = deficitInBonds - _initInfo.AuctionBondBalance;
-            var minDeficitBonds = CurrencyConvert.NeutrinoToBond(_initInfo.Supply) * _deficitOffset / 100;
 
             var surplus = deficitInBonds * -1;
-            var liquidationContractBalanceInBonds = CurrencyConvert.NeutrinoToBond(_initInfo.LiquidationNeutrinoBalance);
+            var liquidationContractBalanceInBonds =
+                CurrencyConvert.NeutrinoToBond(_initInfo.LiquidationNeutrinoBalance);
             var requireSurplusBonds = surplus - liquidationContractBalanceInBonds;
-            
-            if (deficitInBonds > 0 && requireDeficitBonds >= minDeficitBonds || requireSurplusBonds > 1)
+
+            if (auctionNBAmount >= 1 || requireSurplusBonds > 1)
             {
                 Logger.Info("Transfer to auction");
                 var transferTxId = await _neutrinoApi.TransferToAuction();
@@ -190,9 +211,11 @@ namespace NeutrinoOracles.PacemakerOracle.Services
         public async Task ExecuteOrderLiquidation()
         {
             var surplusInBonds = -1 * CurrencyConvert.NeutrinoToBond(_initInfo.Deficit);
-            var liquidationContractBalanceInBonds = CurrencyConvert.NeutrinoToBond(_initInfo.LiquidationNeutrinoBalance);
-            
-            if (surplusInBonds > 0 && !string.IsNullOrEmpty(_liquidationAccountState.OrderFirst) && liquidationContractBalanceInBonds > 1)
+            var liquidationContractBalanceInBonds =
+                CurrencyConvert.NeutrinoToBond(_initInfo.LiquidationNeutrinoBalance);
+
+            if (surplusInBonds > 0 && !string.IsNullOrEmpty(_liquidationAccountState.OrderFirst) &&
+                liquidationContractBalanceInBonds > 1)
             {
                 Logger.Info("Execute order for liquidation");
 
@@ -214,7 +237,8 @@ namespace NeutrinoOracles.PacemakerOracle.Services
                     nextOrder = _liquidationAccountState.NextOrderByOrder?.GetValueOrDefault(nextOrder);
                 }
             }
-            else if(surplusInBonds <= 0 && !string.IsNullOrEmpty(_liquidationAccountState.OrderFirst) && liquidationContractBalanceInBonds > 1)
+            else if (surplusInBonds <= 0 && !string.IsNullOrEmpty(_liquidationAccountState.OrderFirst) &&
+                     liquidationContractBalanceInBonds > 1)
             {
                 var exTxId = await _neutrinoApi.ExecuteOrderLiquidation();
                 Logger.Info($"Return liquidation balance tx id:{exTxId}");
@@ -223,36 +247,43 @@ namespace NeutrinoOracles.PacemakerOracle.Services
 
         public async Task ExecuteOrderAuction()
         {
-            var deficitInBonds = CurrencyConvert.NeutrinoToBond(_initInfo.Deficit);
-            
-            if (deficitInBonds > 0 && _initInfo.AuctionBondBalance > 0 && !string.IsNullOrEmpty(_auctionControlState.Orderbook))
+            var roiEquals = _initInfo.Deficit * 100 / _initInfo.Supply;
+            if (_initInfo.AuctionBondBalance > 0 && !string.IsNullOrEmpty(_auctionControlState.OrderFirst))
             {
                 Logger.Info("Execute order for auction");
 
-                var orders = _auctionControlState.Orderbook.Split("_");
                 long totalExecute = 0;
-                foreach (var order in orders.Where(x => !string.IsNullOrEmpty(x)))
-                {
-                    var total = _auctionControlState.TotalByOrder[order];
-                    var totalFilled = _auctionControlState.FilledTotalByOrder?.GetValueOrDefault(order) ?? 0;
-                    var amount = CurrencyConvert.NeutrinoToBond(total - totalFilled) * 100 /
-                                 _auctionControlState.PriceByOrder[order];
 
-                    if (totalExecute >= deficitInBonds)
+                var nextOrder = _auctionControlState.OrderFirst;
+                while (!string.IsNullOrEmpty(nextOrder))
+                {
+                    var roi = _auctionControlState.RoiByOrder[nextOrder];
+                    if (roiEquals < roi)
+                    {
+                        return;
+                    }
+
+                    var total = _auctionControlState.TotalByOrder[nextOrder];
+                    var totalFilled = _auctionControlState.FilledTotalByOrder?.GetValueOrDefault(nextOrder) ?? 0;
+                    var amount = CurrencyConvert.NeutrinoToBond(total - totalFilled) * 100 /
+                                 _auctionControlState.PriceByOrder[nextOrder];
+
+                    if (totalExecute >= _initInfo.AuctionBondBalance)
                         break;
 
                     totalExecute += amount;
 
                     var exTxId = await _neutrinoApi.ExecuteOrderAuction();
                     Logger.Info($"Execute auction order tx id:{exTxId}");
+                    nextOrder = _auctionControlState.NextOrderByOrder?.GetValueOrDefault(nextOrder);
                 }
             }
-            else if(deficitInBonds <= 0 && _initInfo.AuctionBondBalance > 0)
+            else if (_initInfo.AuctionBondBalance > _initInfo.Supply)
             {
                 var exTxId = await _neutrinoApi.ExecuteOrderAuction();
                 Logger.Info($"Execute auction order tx id:{exTxId}");
             }
-            
+
         }
     }
 }

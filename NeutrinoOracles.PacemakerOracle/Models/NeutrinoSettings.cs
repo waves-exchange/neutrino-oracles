@@ -7,5 +7,6 @@ namespace NeutrinoOracles.PacemakerOracle.Models
         public string AuctionAddress { get; set; }
         public string LiquidationAddress { get; set; }
         public string ControlAddress { get; set; }
+        public string BondAssetId { get; set; }
     }
 }

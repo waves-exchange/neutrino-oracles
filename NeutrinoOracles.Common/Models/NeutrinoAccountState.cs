@@ -15,11 +15,8 @@ namespace NeutrinoOracles.Common.Models
         public string AuctionContract { get; set; } 
         
         [AccountDataConvertInfo("neutrino_asset_id")]
-        public string NeutrinoAssetId { get; set; } 
-        
-        [AccountDataConvertInfo("bond_asset_id")]
-        public string BondAssetId { get; set; } 
-        
+        public string NeutrinoAssetId { get; set; }
+
         [AccountDataConvertInfo("balance_lock_waves_")]  
         public Dictionary<string, long> BalanceLockWavesByUser { get; set; }
         
