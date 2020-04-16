@@ -6,8 +6,14 @@ namespace NeutrinoOracles.Common.Models
 {
     public class AuctionAccountState
     {
-        [AccountDataConvertInfo("orderbook")]
-        public string Orderbook { get; set; }
+        [AccountDataConvertInfo("order_first")]
+        public string OrderFirst { get; set; }
+        
+        [AccountDataConvertInfo("order_next")]  
+        public Dictionary<string, string> NextOrderByOrder { get; set; }
+        
+        [AccountDataConvertInfo("debug_order_roi_")]
+        public Dictionary<string, long> RoiByOrder { get; set; }
         
         [AccountDataConvertInfo("order_total_")]
         public Dictionary<string, long> TotalByOrder { get; set; }
