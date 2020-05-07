@@ -24,7 +24,6 @@ namespace NeutrinoOracles.PacemakerOracle.Services
 
         private InitPacemakerInfo _initInfo;
         private NeutrinoAccountState _neutrinoAccountState;
-        private ControlAccountState _controlAccountState;
         private AuctionAccountState _auctionControlState;
         private LiquidationAccountData _liquidationAccountState;
 
@@ -83,9 +82,7 @@ namespace NeutrinoOracles.PacemakerOracle.Services
 
         public async Task WithdrawAllUser()
         {
-            _controlAccountState =
-                AccountDataConverter.ToControlAccountData(
-                    await _wavesHelper.GetDataByAddress(_neutrinoSettings.ControlAddress));
+            var currentPriceIndex = (long)(await _wavesHelper.GetDataByAddressAndKey(_neutrinoSettings.ControlAddress, "price_index")).Value;
 
             var addresses = new List<string>();
 
@@ -104,16 +101,33 @@ namespace NeutrinoOracles.PacemakerOracle.Services
                 if (_initInfo.Height < withdrawBlock)
                     continue;
 
-                var indexes = _controlAccountState.PriceHeightByIndex.Where(x => x.Value >= withdrawBlock).ToList();
-
-                if (!indexes.Any())
+                var priceHeight = (long) (await _wavesHelper.GetDataByAddressAndKey(_neutrinoSettings.ControlAddress,
+                    "price_index_" + currentPriceIndex)).Value;
+                
+                if (withdrawBlock >= priceHeight)
                     continue;
-
-                var indexString = indexes.Min(x => x.Key);
-                var index = Convert.ToInt64(indexString);
-                var heightByIndex = _controlAccountState.PriceHeightByIndex[indexString];
-                var priceByHeight = _controlAccountState.PriceByHeight[Convert.ToString(heightByIndex)];
-                var withdrawNeutrinoAmount = _neutrinoAccountState.BalanceLockNeutrinoByUser.GetValueOrDefault(address);
+                
+                long index = 0;
+                for (var i = currentPriceIndex; i > 0; i--)
+                {
+                    priceHeight = (long) (await _wavesHelper.GetDataByAddressAndKey(_neutrinoSettings.ControlAddress,
+                        "price_index_" + i)).Value;
+                    if (withdrawBlock == priceHeight)
+                    {
+                        index = currentPriceIndex;
+                        break;
+                    } 
+                    
+                    if (withdrawBlock > priceHeight)
+                    {
+                        index = currentPriceIndex-1;   
+                        break;
+                    }
+                }
+                
+                var foundHeight = (long) (await _wavesHelper.GetDataByAddressAndKey(_neutrinoSettings.ControlAddress, "price_index_" + index)).Value;
+                var priceByHeight = (long) (await _wavesHelper.GetDataByAddressAndKey(_neutrinoSettings.ControlAddress, "price_" + foundHeight)).Value; 
+                var withdrawNeutrinoAmount = _neutrinoAccountState.BalanceLockNeutrinoByUser?.GetValueOrDefault(address) ?? 0;
 
                 if (withdrawNeutrinoAmount > 0)
                 {
