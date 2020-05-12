@@ -43,10 +43,10 @@ namespace NeutrinoOracles.PacemakerOracle
             
             var commands = new List<Command>()
             {
+                Command.Withdraw,
                 Command.TransferToAuction,
                 Command.ExecuteOrderLiquidation,
                 Command.ExecuteOrderAuction,
-                Command.Withdraw,
                 Command.RebalanceLeasing
             };
             
